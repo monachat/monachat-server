@@ -45,7 +45,7 @@ async def on_connect(reader, writer):
     client_id = None
 
     room_path = None
-    room_directory = None
+    parent_room_path = None
     room_name = None
 
     while True:
@@ -80,7 +80,7 @@ async def on_connect(reader, writer):
                 pass
             elif root.tag == 'ENTER':
                 room_path = os.path.abspath(attrib['room'])
-                room_directory = os.path.dirname(room_path)
+                parent_room_path = os.path.dirname(room_path)
                 room_name = os.path.basename(room_path)
 
                 if room_path not in room_user_counts:
@@ -93,7 +93,7 @@ async def on_connect(reader, writer):
                         writer.write(b'<FULL />\0')
 
                         room_path = None
-                        room_directory = None
+                        parent_room_path = None
                         room_name = None
 
                         await writer.drain()
@@ -184,9 +184,9 @@ async def on_connect(reader, writer):
                     f'<COUNT c="{room_user_counts[room_path]}" n="{room_name}" />',
                 )
 
-                if room_directory in room_user_writers:
+                if parent_room_path in room_user_writers:
                     write_to_all(
-                        room_user_writers[room_directory],
+                        room_user_writers[parent_room_path],
                         f'<COUNT><ROOM c="{room_user_counts[room_path]}" n="{room_name}" /></COUNT>',
                     )
             elif root.tag == 'EXIT':
@@ -208,14 +208,14 @@ async def on_connect(reader, writer):
 
                     room_user_writers[room_path].remove(writer)
 
-                    if room_directory in room_user_writers:
+                    if parent_room_path in room_user_writers:
                         write_to_all(
-                            room_user_writers[room_directory],
+                            room_user_writers[parent_room_path],
                             f'<COUNT><ROOM c="{room_user_counts[room_path]}" n="{room_name}" /></COUNT>',
                         )
 
                     room_path = None
-                    room_directory = None
+                    parent_room_path = None
                     room_name = None
             elif root.tag in RECOGNIZED_ATTRIBUTES:
                 write_to_all(
@@ -250,16 +250,16 @@ async def on_connect(reader, writer):
                 f'<COUNT c="{room_user_counts[room_path]}" n="{room_name}" />',
             )
 
-            if room_directory in room_user_writers:
+            if parent_room_path in room_user_writers:
                 write_to_all(
-                    room_user_writers[room_directory],
+                    room_user_writers[parent_room_path],
                     f'<COUNT><ROOM c="{room_user_counts[room_path]}" n="{room_name}" /></COUNT>',
                 )
 
             await writer.drain()
 
             room_path = None
-            room_directory = None
+            parent_room_path = None
             room_name = None
 
     writer.close()
