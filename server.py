@@ -10,13 +10,21 @@ PORT = 9095
 
 NUMBER_OF_ROOMS = 100
 
+RECOGNIZED_ATTRIBUTES = {
+    'ENTER': ['r', 'name', 'trip', 'id', 'cmd', 'param', 'ihash', 'pre', 'stat', 'g', 'type', 'b', 'y', 'x', 'scl'],
+    'SET': ['x', 'scl', 'stat', 'cmd', 'pre', 'param', 'id', 'y'],
+    'RSET': ['cmd', 'param', 'id'],
+    'COM': ['cmt', 'cnt', 'style', 'id'],
+    'IG': ['ihash', 'stat', 'id'],
+}
+
 logged_ids = {}
 free_ids = []
 max_id = 0
 
 room_user_counts = {}
 
-room_user_attribs = {}
+room_user_attributes = {}
 room_user_writers = {}
 
 
@@ -64,7 +72,11 @@ async def on_connect(reader, writer):
             root = ET.fromstring(decoded_line)
             attrib = root.attrib
 
+            attrib['id'] = client_id
+
             if root.tag == 'policy-file-request':
+                pass
+            elif root.tag == 'NOP':
                 pass
             elif root.tag == 'ENTER':
                 room_path = os.path.abspath(attrib['room'])
@@ -95,35 +107,33 @@ async def on_connect(reader, writer):
 
                 room_user_writers[room_path].append(writer)
 
-                if room_path not in room_user_attribs:
-                    room_user_attribs[room_path] = {}
+                if room_path not in room_user_attributes:
+                    room_user_attributes[room_path] = {}
 
-                if room_user_attribs[room_path]:
+                if room_user_attributes[room_path]:
                     writer.write(
                         ('<ROOM>' +
                          ''.join([
                              ('<USER' +
                               ''.join([
-                                  f' {key}="{room_user_attrib[key]}"'
-                                  if key in room_user_attrib else ''
+                                  f' {key}="{room_user_attribute[key]}"'
+                                  if key in room_user_attribute else ''
                                   for key in [
                                       'r', 'name', 'id', 'trip', 'ihash', 'stat', 'g', 'type', 'b', 'y', 'x', 'scl']
                               ]) +
                               ' />')
-                             for room_user_attrib in room_user_attribs[room_path].values()
+                             for room_user_attribute in room_user_attributes[room_path].values()
                          ]) +
                          '</ROOM>\0').encode())
                 else:
                     writer.write(b'<ROOM />\0')
-
-                attrib['id'] = client_id
 
                 if 'trip' in attrib:
                     attrib['trip'] = tripcode(attrib['trip'])
 
                 attrib['ihash'] = tripcode(client_ip_address)
 
-                room_user_attribs[room_path][client_id] = attrib
+                room_user_attributes[room_path][client_id] = attrib
 
                 if 'attrib' in attrib and attrib['attrib'] == 'no':
                     writer.write(
@@ -164,8 +174,7 @@ async def on_connect(reader, writer):
                         ''.join([
                             f' {key}="{attrib[key]}"'
                             if key in attrib else ''
-                            for key in [
-                                'r', 'name', 'trip', 'id', 'cmd', 'param', 'ihash', 'pre', 'stat', 'g', 'type', 'b', 'y', 'x', 'scl']
+                            for key in RECOGNIZED_ATTRIBUTES['ENTER']
                         ]) +
                         ' />',
                     )
@@ -181,11 +190,11 @@ async def on_connect(reader, writer):
                         f'<COUNT><ROOM c="{room_user_counts[room_path]}" n="{room_name}" /></COUNT>',
                     )
             elif root.tag == 'EXIT':
-                if room_name is None:
+                if room_path is None:
                     writer.write(f'<EXIT id="{client_id}" />\0'.encode())
                 else:
                     room_user_counts[room_path] -= 1
-                    del room_user_attribs[room_path][client_id]
+                    del room_user_attributes[room_path][client_id]
 
                     write_to_all(
                         room_user_writers[room_path],
@@ -208,54 +217,17 @@ async def on_connect(reader, writer):
                     room_path = None
                     room_directory = None
                     room_name = None
-            elif root.tag == 'SET':
+            elif root.tag in RECOGNIZED_ATTRIBUTES:
                 write_to_all(
                     room_user_writers[room_path],
-                    '<SET' +
+                    f'<{root.tag}' +
                     ''.join([
                         f' {key}="{attrib[key]}"'
                         if key in attrib else ''
-                        for key in ['x', 'scl', 'stat', 'cmd', 'pre', 'param']
+                        for key in RECOGNIZED_ATTRIBUTES[root.tag]
                     ]) +
-                    f' id="{client_id}"' +
-                    (f' y="{attrib["y"]}"' if 'y' in attrib else '') +
                     ' />',
                 )
-            elif root.tag == 'RSET':
-                write_to_all(
-                    room_user_writers[room_path],
-                    '<RSET' +
-                    ''.join([
-                        f' {key}="{attrib[key]}"'
-                        if key in attrib else ''
-                        for key in ['cmd', 'param']
-                    ]) +
-                    f' id="{client_id}" />',
-                )
-            elif root.tag == 'COM':
-                write_to_all(
-                    room_user_writers[room_path],
-                    '<COM' +
-                    ''.join([
-                        f' {key}="{attrib[key]}"'
-                        if key in attrib else ''
-                        for key in ['cmt', 'cnt', 'style']
-                    ]) +
-                    f' id="{client_id}" />',
-                )
-            elif root.tag == 'IG':
-                write_to_all(
-                    room_user_writers[room_path],
-                    '<IG' +
-                    ''.join([
-                        f' {key}="{attrib[key]}"'
-                        if key in attrib else ''
-                        for key in ['ihash', 'stat']
-                    ]) +
-                    f' id="{client_id}" />',
-                )
-            elif root.tag == 'NOP':
-                pass
 
         await writer.drain()
 
@@ -263,10 +235,10 @@ async def on_connect(reader, writer):
         free_ids.insert(0, client_id)
         del logged_ids[client_id]
 
-        if room_name is not None:
+        if room_path is not None:
             room_user_counts[room_path] -= 1
             room_user_writers[room_path].remove(writer)
-            del room_user_attribs[room_path][client_id]
+            del room_user_attributes[room_path][client_id]
 
             write_to_all(
                 room_user_writers[room_path],
