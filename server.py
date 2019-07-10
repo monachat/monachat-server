@@ -18,7 +18,7 @@ RECOGNIZED_ATTRIBUTES = {
     'IG': ['ihash', 'stat', 'id'],
 }
 
-logged_ids = {}
+logged_ids = []
 free_ids = []
 max_id = 0
 
@@ -64,7 +64,7 @@ async def on_connect(reader, writer):
                 max_id += 1
                 client_id = max_id
 
-            logged_ids[client_id] = 1
+            logged_ids.append(client_id)
 
             writer.write(f'+connect id={client_id}\0'.encode())
             writer.write(f'<CONNECT id="{client_id}" />\0'.encode())
@@ -233,7 +233,7 @@ async def on_connect(reader, writer):
 
     if client_id:
         free_ids.insert(0, client_id)
-        del logged_ids[client_id]
+        logged_ids.remove(client_id)
 
         if room_path is not None:
             room_user_counts[room_path] -= 1
