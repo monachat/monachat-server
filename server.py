@@ -3,7 +3,7 @@
 import asyncio
 import crypt
 import os
-import xml.etree.ElementTree as ET
+import xml.etree.ElementTree
 
 HOST = 'localhost'
 PORT = 9095
@@ -69,7 +69,7 @@ async def on_connect(reader, writer):
             writer.write(f'+connect id={client_id}\0'.encode())
             writer.write(f'<CONNECT id="{client_id}" />\0'.encode())
         else:
-            root = ET.fromstring(decoded_line)
+            root = xml.etree.ElementTree.fromstring(decoded_line)
             attrib = root.attrib
 
             attrib['id'] = client_id
