@@ -14,14 +14,14 @@ max_id = 0
 
 room_user_counts = [0] * NUMBER_OF_ROOMS
 
-room_users = [{} for i in range(NUMBER_OF_ROOMS)]
+room_user_attributes = [{} for i in range(NUMBER_OF_ROOMS)]
 
-clients = []
+room_user_writers = [[] for i in range(NUMBER_OF_ROOMS)]
 
 
-def send_to_all(message):
-    for client in clients:
-        client.write(f'{message}\0'.encode())
+def write_to_all(writers, message):
+    for writer in writers:
+        writer.write(f'{message}\0'.encode())
 
 
 async def on_connect(reader, writer):
@@ -29,8 +29,6 @@ async def on_connect(reader, writer):
     client_id = None
     comment_counter = 0
     current_room_index = None
-
-    clients.append(writer)
 
     while True:
         try:
@@ -76,87 +74,129 @@ async def on_connect(reader, writer):
                          ]) +
                          '</COUNT>\0').encode())
 
-                    send_to_all(f'<ENTER id="{client_id}" />')
+                    writer.write(f'<ENTER id="{client_id}" />\0'.encode())
 
-                    send_to_all(f'<COUNT c="1" n="{room_directory}" />')
+                    writer.write(
+                        f'<COUNT c="1" n="{room_directory}" />\0'.encode())
                 else:
                     room_number = room_parts[2]
                     room_index = int(room_number) - 1
                     current_room_index = room_index
 
+                    room_user_writers[room_index].append(writer)
+
                     room_user_counts[room_index] += 1
 
-                    if room_users[room_index]:
+                    if room_user_attributes[room_index]:
                         writer.write(
                             ('<ROOM>' +
                              ''.join([
-                                 f'<USER r="{user.get("r")}" name="{user.get("name")}" id="{user_id}" ihash="{user_id}" stat="{user.get("stat")}" g="{user.get("g")}" type="{user.get("type")}" b="{user.get("b")}" y="{user.get("y")}" x="{user.get("x")}" scl="{user.get("scl")}" />'
-                                 for user_id, user in room_users[room_index].items()
+                                 f'<USER r="{user_attrib.get("r")}" name="{user_attrib.get("name")}" id="{user_id}" ihash="{user_id}" stat="{user_attrib.get("stat")}" g="{user_attrib.get("g")}" type="{user_attrib.get("type")}" b="{user_attrib.get("b")}" y="{user_attrib.get("y")}" x="{user_attrib.get("x")}" scl="{user_attrib.get("scl")}" />'
+                                 for user_id, user_attrib in room_user_attributes[room_index].items()
                              ]) +
                              '</ROOM>\0').encode())
                     else:
                         writer.write(b'<ROOM />\0')
 
-                    room_users[room_index][client_id] = attrib
+                    room_user_attributes[room_index][client_id] = attrib
 
-                    send_to_all(
-                        f'<ENTER r="{attrib.get("r")}" name="{attrib.get("name")}" id="{client_id}" ihash="{client_id}" stat="{attrib.get("stat")}" g="{attrib.get("g")}" type="{attrib.get("type")}" b="{attrib.get("b")}" y="{attrib.get("y")}" x="{attrib.get("x")}" scl="{attrib.get("scl")}" />')
+                    write_to_all(
+                        room_user_writers[room_index],
+                        f'<ENTER r="{attrib.get("r")}" name="{attrib.get("name")}" id="{client_id}" ihash="{client_id}" stat="{attrib.get("stat")}" g="{attrib.get("g")}" type="{attrib.get("type")}" b="{attrib.get("b")}" y="{attrib.get("y")}" x="{attrib.get("x")}" scl="{attrib.get("scl")}" />',
+                    )
 
-                    send_to_all(
-                        f'<COUNT c="{room_user_counts[room_index]}" n="{room_number}" />')
+                    write_to_all(
+                        room_user_writers[room_index],
+                        f'<COUNT c="{room_user_counts[room_index]}" n="{room_number}" />',
+                    )
             elif root.tag == 'EXIT':
-                if current_room_index is not None:
+                if current_room_index is None:
+                    writer.write(f'<EXIT id="{client_id}" />\0'.encode())
+                else:
                     room_user_counts[current_room_index] -= 1
-                    del room_users[current_room_index][client_id]
+                    del room_user_attributes[current_room_index][client_id]
+
+                    write_to_all(
+                        room_user_writers[current_room_index],
+                        f'<EXIT id="{client_id}" />',
+                    )
+
+                    write_to_all(
+                        room_user_writers[room_index],
+                        f'<COUNT c="{room_user_counts[room_index]}" n="{current_room_index + 1}" />',
+                    )
+
+                    room_user_writers[current_room_index].remove(writer)
 
                     comment_counter = 0
 
                     current_room_index = None
-
-                send_to_all(f'<EXIT id="{client_id}" />')
             elif root.tag == 'SET':
                 if 'x' in attrib and 'y' in attrib and 'scl' in attrib:
-                    send_to_all(
-                        f'<SET x="{attrib.get("x")}" scl="{attrib.get("scl")}" id="{client_id}" y="{attrib.get("y")}" />')
+                    write_to_all(
+                        room_user_writers[current_room_index],
+                        f'<SET x="{attrib.get("x")}" scl="{attrib.get("scl")}" id="{client_id}" y="{attrib.get("y")}" />',
+                    )
                 elif 'stat' in attrib:
-                    send_to_all(
-                        f'<SET stat="{attrib.get("stat")}" id="{client_id}" />')
+                    write_to_all(
+                        room_user_writers[current_room_index],
+                        f'<SET stat="{attrib.get("stat")}" id="{client_id}" />',
+                    )
                 elif 'cmd' in attrib:
                     if 'pre' in attrib and 'param' in attrib:
-                        send_to_all(
-                            f'<SET cmd="{attrib.get("cmd")}" pre="{attrib.get("pre")}" param="{attrib.get("param")}" id="{client_id}" />')
+                        write_to_all(
+                            room_user_writers[current_room_index],
+                            f'<SET cmd="{attrib.get("cmd")}" pre="{attrib.get("pre")}" param="{attrib.get("param")}" id="{client_id}" />',
+                        )
                     else:
-                        send_to_all(
-                            f'<SET cmd="{attrib.get("cmd")}" id="{client_id}" />')
+                        write_to_all(
+                            room_user_writers[current_room_index],
+                            f'<SET cmd="{attrib.get("cmd")}" id="{client_id}" />',
+                        )
             elif root.tag == 'RSET':
-                send_to_all(
-                    f'<RSET cmd="{attrib.get("cmd")}" param="{attrib.get("param")}" id="{client_id}" />')
+                write_to_all(
+                    room_user_writers[current_room_index],
+                    f'<RSET cmd="{attrib.get("cmd")}" param="{attrib.get("param")}" id="{client_id}" />',
+                )
             elif root.tag == 'COM':
-                send_to_all(
-                    f'<COM cmt="{attrib.get("cmt")}" cnt="{comment_counter}" id="{client_id}" />')
+                write_to_all(
+                    room_user_writers[current_room_index],
+                    f'<COM cmt="{attrib.get("cmt")}" cnt="{comment_counter}" id="{client_id}" />',
+                )
 
                 comment_counter += 1
             elif root.tag == 'IG':
-                send_to_all(
-                    f'<IG ihash="{attrib.get("ihash")}" stat="{attrib.get("stat")}" id="{client_id}" />')
+                write_to_all(
+                    room_user_writers[current_room_index],
+                    f'<IG ihash="{attrib.get("ihash")}" stat="{attrib.get("stat")}" id="{client_id}" />',
+                )
             elif root.tag == 'NOP':
                 pass
 
         await writer.drain()
 
-    clients.remove(writer)
-
     if client_id:
-        if current_room_index is not None:
-            room_user_counts[current_room_index] -= 1
-            del room_users[current_room_index][client_id]
-
-            send_to_all(f'<EXIT id="{client_id}" />')
-
-            current_room_index = None
-
         free_ids.insert(0, client_id)
         del logged_ids[client_id]
+
+        if current_room_index is not None:
+            room_user_writers[current_room_index].remove(writer)
+            room_user_counts[current_room_index] -= 1
+            del room_user_attributes[current_room_index][client_id]
+
+            write_to_all(
+                room_user_writers[current_room_index],
+                f'<EXIT id="{client_id}" />',
+            )
+
+            write_to_all(
+                room_user_writers[current_room_index],
+                f'<COUNT c="{room_user_counts[room_index]}" n="{current_room_index + 1}" />',
+            )
+
+            await writer.drain()
+
+            current_room_index = None
 
     writer.close()
 
