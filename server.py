@@ -39,8 +39,6 @@ async def on_connect(reader, writer):
     parent_room_path = None
     room_name = None
 
-    comment_counter = 0
-
     while True:
         try:
             line = await reader.readuntil(b'\0')
@@ -115,10 +113,13 @@ async def on_connect(reader, writer):
 
                 if 'attrib' in attrib and attrib['attrib'] == 'no':
                     writer.write(
-                        (f'<UINFO name="{attrib["name"]}"' +
-                         (f' trip="{attrib["trip"]}"'
-                          if 'trip' in attrib else '') +
-                         f' id="{client_id}" />\0').encode())
+                        ('<UINFO' +
+                         ''.join([
+                             f' {key}="{attrib[key]}"'
+                             if key in attrib else ''
+                             for key in ['name', 'trip', 'id']
+                         ]) +
+                         ' />\0').encode())
 
                     if room_path in child_room_user_counts:
                         writer.write(
@@ -186,49 +187,54 @@ async def on_connect(reader, writer):
                             f'<COUNT><ROOM c="{room_user_count}" n="{room_name}" /></COUNT>',
                         )
 
-                    comment_counter = 0
-
                     room_path = None
                     parent_room_path = None
                     room_name = None
             elif root.tag == 'SET':
-                if 'x' in attrib and 'y' in attrib and 'scl' in attrib:
-                    write_to_all(
-                        room_user_writers[room_path],
-                        f'<SET x="{attrib["x"]}" scl="{attrib["scl"]}" id="{client_id}" y="{attrib["y"]}" />',
-                    )
-                elif 'stat' in attrib:
-                    write_to_all(
-                        room_user_writers[room_path],
-                        f'<SET stat="{attrib["stat"]}" id="{client_id}" />',
-                    )
-                elif 'cmd' in attrib:
-                    if 'pre' in attrib and 'param' in attrib:
-                        write_to_all(
-                            room_user_writers[room_path],
-                            f'<SET cmd="{attrib["cmd"]}" pre="{attrib["pre"]}" param="{attrib["param"]}" id="{client_id}" />',
-                        )
-                    else:
-                        write_to_all(
-                            room_user_writers[room_path],
-                            f'<SET cmd="{attrib["cmd"]}" id="{client_id}" />',
-                        )
+                write_to_all(
+                    room_user_writers[room_path],
+                    '<SET' +
+                    ''.join([
+                        f' {key}="{attrib[key]}"'
+                        if key in attrib else ''
+                        for key in ['x', 'scl', 'stat', 'cmd', 'pre', 'param']
+                    ]) +
+                    f' id="{client_id}"' +
+                    (f' y="{attrib["y"]}"' if 'y' in attrib else '') +
+                    ' />',
+                )
             elif root.tag == 'RSET':
                 write_to_all(
                     room_user_writers[room_path],
-                    f'<RSET cmd="{attrib["cmd"]}" param="{attrib["param"]}" id="{client_id}" />',
+                    '<RSET' +
+                    ''.join([
+                        f' {key}="{attrib[key]}"'
+                        if key in attrib else ''
+                        for key in ['cmd', 'param']
+                    ]) +
+                    f' id="{client_id}" />',
                 )
             elif root.tag == 'COM':
                 write_to_all(
                     room_user_writers[room_path],
-                    f'<COM cmt="{attrib["cmt"]}" cnt="{comment_counter}" id="{client_id}" />',
+                    '<COM' +
+                    ''.join([
+                        f' {key}="{attrib[key]}"'
+                        if key in attrib else ''
+                        for key in ['cmt', 'cnt', 'style']
+                    ]) +
+                    f' id="{client_id}" />',
                 )
-
-                comment_counter += 1
             elif root.tag == 'IG':
                 write_to_all(
                     room_user_writers[room_path],
-                    f'<IG ihash="{attrib["ihash"]}" stat="{attrib["stat"]}" id="{client_id}" />',
+                    '<IG' +
+                    ''.join([
+                        f' {key}="{attrib[key]}"'
+                        if key in attrib else ''
+                        for key in ['ihash', 'stat']
+                    ]) +
+                    f' id="{client_id}" />',
                 )
             elif root.tag == 'NOP':
                 pass
