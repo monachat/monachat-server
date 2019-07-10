@@ -54,10 +54,10 @@ async def on_connect(reader, writer):
         except (asyncio.IncompleteReadError, ConnectionResetError):
             break
 
-        decoded_line = line.decode().rstrip('\0')
-        print(decoded_line)
+        line = line.decode().rstrip('\0')
+        print(line)
 
-        if decoded_line == 'MojaChat':
+        if line == 'MojaChat':
             if free_ids:
                 client_id = free_ids.pop()
             else:
@@ -69,7 +69,7 @@ async def on_connect(reader, writer):
             writer.write(f'+connect id={client_id}\0'.encode())
             writer.write(f'<CONNECT id="{client_id}" />\0'.encode())
         else:
-            root = xml.etree.ElementTree.fromstring(decoded_line)
+            root = xml.etree.ElementTree.fromstring(line)
             attrib = root.attrib
 
             attrib['id'] = client_id
