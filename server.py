@@ -70,19 +70,35 @@ async def on_connect(reader, writer):
                 parent_room_path = os.path.dirname(room_path)
                 room_name = os.path.basename(room_path)
 
-                if room_path not in room_user_writers:
-                    room_user_writers[room_path] = []
-
-                room_user_writers[room_path].append(writer)
-
                 if parent_room_path not in child_room_user_counts:
                     child_room_user_counts[parent_room_path] = {}
 
                 if room_name not in child_room_user_counts[parent_room_path]:
                     child_room_user_counts[parent_room_path][room_name] = 0
 
-                child_room_user_counts[parent_room_path][room_name] += 1
                 room_user_count = child_room_user_counts[parent_room_path][room_name]
+
+                if 'umax' in attrib:
+                    umax = int(attrib['umax'])
+
+                    if umax and room_user_count >= umax:
+                        writer.write(b'<FULL />\0')
+
+                        room_path = None
+                        parent_room_path = None
+                        room_name = None
+
+                        await writer.drain()
+
+                        continue
+
+                child_room_user_counts[parent_room_path][room_name] += 1
+                room_user_count += 1
+
+                if room_path not in room_user_writers:
+                    room_user_writers[room_path] = []
+
+                room_user_writers[room_path].append(writer)
 
                 if room_path not in room_user_attributes:
                     room_user_attributes[room_path] = {}
@@ -246,10 +262,10 @@ async def on_connect(reader, writer):
         del logged_ids[client_id]
 
         if room_name is not None:
-            room_user_writers[room_path].remove(writer)
-
             child_room_user_counts[parent_room_path][room_name] -= 1
             room_user_count = child_room_user_counts[parent_room_path][room_name]
+
+            room_user_writers[room_path].remove(writer)
 
             del room_user_attributes[room_path][client_id]
 
