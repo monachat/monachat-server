@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import asyncio
+import crypt
 import os
 import xml.etree.ElementTree as ET
 
@@ -18,6 +19,11 @@ room_user_attributes = {}
 room_user_writers = {}
 
 
+def tripcode(password):
+    salt = (password + 'H.')[1:3]
+    return crypt.crypt(password, salt)[-10:]
+
+
 def write_to_all(writers, message):
     for writer in writers:
         writer.write(f'{message}\0'.encode())
@@ -27,6 +33,7 @@ async def on_connect(reader, writer):
     global max_id
 
     client_id = None
+    client_ip_address = writer.get_extra_info('peername')[0]
 
     room_path = None
     parent_room_path = None
@@ -86,20 +93,32 @@ async def on_connect(reader, writer):
                     writer.write(
                         ('<ROOM>' +
                          ''.join([
-                             f'<USER r="{user_attrib["r"]}" name="{user_attrib["name"]}" id="{user_id}" ihash="{user_id}" stat="{user_attrib["stat"]}" g="{user_attrib["g"]}" type="{user_attrib["type"]}" b="{user_attrib["b"]}" y="{user_attrib["y"]}" x="{user_attrib["x"]}" scl="{user_attrib["scl"]}" />'
-                             if 'r' in user_attrib else
-                             f'<USER name="{user_attrib["name"]}" id="{user_id}" />'
+                             ('<USER' +
+                              ''.join([
+                                  f' {key}="{user_attrib[key]}"'
+                                  if key in user_attrib else ''
+                                  for key in [
+                                      'r', 'name', 'id', 'trip', 'ihash', 'stat', 'g', 'type', 'b', 'y', 'x', 'scl']
+                              ]) +
+                              ' />')
                              for user_id, user_attrib in room_user_attributes[room_path].items()
                          ]) +
                          '</ROOM>\0').encode())
                 else:
                     writer.write(b'<ROOM />\0')
 
+                if 'trip' in attrib:
+                    attrib['trip'] = tripcode(attrib['trip'])
+
                 room_user_attributes[room_path][client_id] = attrib
+                room_user_attributes[room_path][client_id]['id'] = client_id
 
                 if 'attrib' in attrib and attrib['attrib'] == 'no':
                     writer.write(
-                        f'<UINFO name="{attrib["name"]}" id="{client_id}" />\0'.encode())
+                        (f'<UINFO name="{attrib["name"]}"' +
+                         (f' trip="{attrib["trip"]}"'
+                          if 'trip' in attrib else '') +
+                         f' id="{client_id}" />\0').encode())
 
                     if room_path in child_room_user_counts:
                         writer.write(
@@ -115,9 +134,19 @@ async def on_connect(reader, writer):
                         f'<ENTER id="{client_id}" />',
                     )
                 else:
+                    room_user_attributes[room_path][client_id]['ihash'] = tripcode(
+                        client_ip_address)
+
                     write_to_all(
                         room_user_writers[room_path],
-                        f'<ENTER r="{attrib["r"]}" name="{attrib["name"]}" id="{client_id}" ihash="{client_id}" stat="{attrib["stat"]}" g="{attrib["g"]}" type="{attrib["type"]}" b="{attrib["b"]}" y="{attrib["y"]}" x="{attrib["x"]}" scl="{attrib["scl"]}" />',
+                        '<ENTER' +
+                        ''.join([
+                            f' {key}="{attrib[key]}"'
+                            if key in attrib else ''
+                            for key in [
+                                'r', 'name', 'trip', 'id', 'cmd', 'param', 'ihash', 'pre', 'stat', 'g', 'type', 'b', 'y', 'x', 'scl']
+                        ]) +
+                        ' />',
                     )
 
                 write_to_all(
