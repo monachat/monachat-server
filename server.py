@@ -227,6 +227,12 @@ async def on_connect(reader, writer):
                 f'<COUNT c="{room_user_count}" n="{room_name}" />',
             )
 
+            if parent_room_path in room_user_writers:
+                write_to_all(
+                    room_user_writers[parent_room_path],
+                    f'<COUNT><ROOM c="{room_user_count}" n="{room_name}" /></COUNT>',
+                )
+
             await writer.drain()
 
             room_path = None
