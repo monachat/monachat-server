@@ -86,7 +86,8 @@ async def on_connect(reader, writer):
                     writer.write(
                         ('<ROOM>' +
                          ''.join([
-                             f'<USER r="{user_attrib["r"]}" name="{user_attrib["name"]}" id="{user_id}" ihash="{user_id}" stat="{user_attrib["stat"]}" g="{user_attrib["g"]}" type="{user_attrib["type"]}" b="{user_attrib["b"]}" y="{user_attrib["y"]}" x="{user_attrib["x"]}" scl="{user_attrib["scl"]}" />' if 'r' in user_attrib else
+                             f'<USER r="{user_attrib["r"]}" name="{user_attrib["name"]}" id="{user_id}" ihash="{user_id}" stat="{user_attrib["stat"]}" g="{user_attrib["g"]}" type="{user_attrib["type"]}" b="{user_attrib["b"]}" y="{user_attrib["y"]}" x="{user_attrib["x"]}" scl="{user_attrib["scl"]}" />'
+                             if 'r' in user_attrib else
                              f'<USER name="{user_attrib["name"]}" id="{user_id}" />'
                              for user_id, user_attrib in room_user_attributes[room_path].items()
                          ]) +
