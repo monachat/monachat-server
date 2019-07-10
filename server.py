@@ -15,8 +15,9 @@ free_ids = []
 max_id = 0
 
 room_user_counts = {}
+
+room_user_attribs = {}
 room_user_writers = {}
-room_user_attributes = {}
 
 
 def tripcode(password):
@@ -32,8 +33,8 @@ def write_to_all(writers, message):
 async def on_connect(reader, writer):
     global max_id
 
-    client_id = None
     client_ip_address = writer.get_extra_info('peername')[0]
+    client_id = None
 
     room_path = None
     room_directory = None
@@ -94,32 +95,35 @@ async def on_connect(reader, writer):
 
                 room_user_writers[room_path].append(writer)
 
-                if room_path not in room_user_attributes:
-                    room_user_attributes[room_path] = {}
+                if room_path not in room_user_attribs:
+                    room_user_attribs[room_path] = {}
 
-                if room_user_attributes[room_path]:
+                if room_user_attribs[room_path]:
                     writer.write(
                         ('<ROOM>' +
                          ''.join([
                              ('<USER' +
                               ''.join([
-                                  f' {key}="{user_attrib[key]}"'
-                                  if key in user_attrib else ''
+                                  f' {key}="{room_user_attrib[key]}"'
+                                  if key in room_user_attrib else ''
                                   for key in [
                                       'r', 'name', 'id', 'trip', 'ihash', 'stat', 'g', 'type', 'b', 'y', 'x', 'scl']
                               ]) +
                               ' />')
-                             for user_id, user_attrib in room_user_attributes[room_path].items()
+                             for room_user_attrib in room_user_attribs[room_path].values()
                          ]) +
                          '</ROOM>\0').encode())
                 else:
                     writer.write(b'<ROOM />\0')
 
+                attrib['id'] = client_id
+
                 if 'trip' in attrib:
                     attrib['trip'] = tripcode(attrib['trip'])
 
-                room_user_attributes[room_path][client_id] = attrib
-                room_user_attributes[room_path][client_id]['id'] = client_id
+                attrib['ihash'] = tripcode(client_ip_address)
+
+                room_user_attribs[room_path][client_id] = attrib
 
                 if 'attrib' in attrib and attrib['attrib'] == 'no':
                     writer.write(
@@ -154,9 +158,6 @@ async def on_connect(reader, writer):
                         f'<ENTER id="{client_id}" />',
                     )
                 else:
-                    room_user_attributes[room_path][client_id]['ihash'] = tripcode(
-                        client_ip_address)
-
                     write_to_all(
                         room_user_writers[room_path],
                         '<ENTER' +
@@ -184,8 +185,7 @@ async def on_connect(reader, writer):
                     writer.write(f'<EXIT id="{client_id}" />\0'.encode())
                 else:
                     room_user_counts[room_path] -= 1
-
-                    del room_user_attributes[room_path][client_id]
+                    del room_user_attribs[room_path][client_id]
 
                     write_to_all(
                         room_user_writers[room_path],
@@ -265,10 +265,8 @@ async def on_connect(reader, writer):
 
         if room_name is not None:
             room_user_counts[room_path] -= 1
-
             room_user_writers[room_path].remove(writer)
-
-            del room_user_attributes[room_path][client_id]
+            del room_user_attribs[room_path][client_id]
 
             write_to_all(
                 room_user_writers[room_path],
