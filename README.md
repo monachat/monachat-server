@@ -1,2 +1,2 @@
-# monachat-server
-A Python clone of Monachat's server
+# python-monachat
+Monachat server and client for Python
