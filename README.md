@@ -1,2 +1,2 @@
 # python-monachat
-Monachat server and client for Python
+[UNMAINTAINED] Monachat server and client for Python
